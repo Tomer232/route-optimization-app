@@ -6,4 +6,4 @@ NODE_VERSION = "18"
 PYTHON_VERSION = "3.11"
 
 [deploy]
-startCommand = "python server.py"
+#startCommand = "python server.py"
