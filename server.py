@@ -130,7 +130,13 @@ def process_route():
         }), 500
 
 if __name__ == '__main__':
+    import os
     print("🚀 Starting ORP Route Optimization Service...")
-    print("📍 Health check: http://localhost:5000/health")
-    print("🗺️  Route processing: http://localhost:5000/process_csv")
-    app.run(debug=True, host='0.0.0.0', port=5000)
+    print("📍 Health check: /health")
+    print("🗺️  Route processing: /process_csv")
+    
+    # Get port from environment (Railway provides this)
+    port = int(os.environ.get('PORT', 5000))
+    debug_mode = os.environ.get('FLASK_ENV') == 'development'
+    
+    app.run(debug=debug_mode, host='0.0.0.0', port=port)
