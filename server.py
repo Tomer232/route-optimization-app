@@ -1,12 +1,26 @@
-from flask import Flask, request, jsonify
+from flask import Flask, request, jsonify, send_from_directory, send_file
 from flask_cors import CORS
 import pandas as pd
 import io
 from AStar import run_astar
 import traceback
+import os
 
-app = Flask(__name__)
+app = Flask(__name__, static_folder='static', static_url_path='')
 CORS(app)  # Allow all cross-origin requests
+
+# Serve React frontend
+@app.route('/')
+def serve_frontend():
+    return send_from_directory(app.static_folder, 'index.html')
+
+@app.route('/<path:path>')
+def serve_static_files(path):
+    if path and os.path.exists(os.path.join(app.static_folder, path)):
+        return send_from_directory(app.static_folder, path)
+    else:
+        # For React Router - serve index.html for all unmatched routes
+        return send_from_directory(app.static_folder, 'index.html')
 
 @app.route('/health', methods=['GET'])
 def health_check():
@@ -17,7 +31,7 @@ def health_check():
         "version": "1.0.0"
     })
 
-@app.route('/process_csv', methods=['POST'])
+@app.route('/api/process_csv', methods=['POST'])
 def process_csv():
     """Process CSV with elevation data and return optimized route"""
     try:
@@ -77,7 +91,7 @@ def process_csv():
             "type": "server_error"
         }), 500
 
-@app.route('/process_route', methods=['POST'])
+@app.route('/api/process_route', methods=['POST'])
 def process_route():
     """Alternative endpoint that accepts JSON data instead of CSV file"""
     try:
@@ -133,7 +147,8 @@ if __name__ == '__main__':
     import os
     print("🚀 Starting ORP Route Optimization Service...")
     print("📍 Health check: /health")
-    print("🗺️  Route processing: /process_csv")
+    print("🗺️  Route processing: /api/process_csv")
+    print("🌐 Frontend: /")
     
     # Get port from environment (Railway provides this)
     port = int(os.environ.get('PORT', 5000))
