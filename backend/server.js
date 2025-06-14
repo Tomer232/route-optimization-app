@@ -8,8 +8,26 @@ dotenv.config();
 
 const app = express();
 
-// Middleware
-app.use(cors());
+// CORS Configuration
+const corsOptions = {
+  origin: [
+    'https://clever-recreation-production.up.railway.app', // Your frontend URL
+    'http://localhost:3000', // Local development
+    'http://localhost:5173', // Vite dev server
+    'https://route-optimization-app-production.up.railway.app' // Your backend URL (for self-requests)
+  ],
+  credentials: true, // Allow cookies and authorization headers
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With'],
+};
+
+// Apply CORS middleware
+app.use(cors(corsOptions));
+
+// Handle preflight requests
+app.options('*', cors(corsOptions));
+
+// Other middleware
 app.use(express.json());
 
 // Connect to MongoDB
@@ -38,4 +56,5 @@ app.use((err, req, res, next) => {
 const PORT = process.env.PORT || 3001;
 app.listen(PORT, () => {
   console.log(`🚀 Server running on port ${PORT}`);
+  console.log(`🌐 CORS enabled for origins: ${corsOptions.origin.join(', ')}`);
 });
