@@ -6,6 +6,10 @@ startCommand = "python server.py"
 restartPolicyType = "ON_FAILURE"
 restartPolicyMaxRetries = 10
 
-# Force Python detection
+# Build both frontend and backend
 [build.env]
 NIXPACKS_PYTHON_VERSION = "3.11"
+
+# Install Node.js for frontend build
+[environments.production.build]
+buildCommand = "npm install && npm run build && mkdir -p static && cp -r dist/* static/"
