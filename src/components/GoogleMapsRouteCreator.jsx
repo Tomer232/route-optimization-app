@@ -371,8 +371,8 @@ const GoogleMapsRouteCreator = ({ onRouteCreated, onError, editRouteData = null,
     return elevationData;
   };
 
-  // Helper function to calculate route stats (COPIED FROM LOCAL)
-  const calculateRouteStatsFromPath = (pathCoords) => {
+  // FIXED: Calculate REAL route statistics instead of mock values
+  const calculateRouteStatsFromPath = (pathCoords, elevationData = null) => {
     if (!pathCoords || pathCoords.length < 2) {
       return {
         distance: 0,
@@ -384,22 +384,108 @@ const GoogleMapsRouteCreator = ({ onRouteCreated, onError, editRouteData = null,
       };
     }
 
+    // Calculate real distance
     let totalDistance = 0;
     for (let i = 1; i < pathCoords.length; i++) {
       totalDistance += haversineDistance(pathCoords[i-1], pathCoords[i]);
     }
 
+    // Use elevation data from the backend if available
+    if (elevationData && elevationData.length > 0) {
+      let elevationGain = 0;
+      let elevationLoss = 0;
+      
+      const elevations = elevationData
+        .map(point => point.elevation)
+        .filter(elev => typeof elev === 'number' && !isNaN(elev));
+      
+      if (elevations.length > 1) {
+        // Calculate elevation changes
+        for (let i = 1; i < elevations.length; i++) {
+          const change = elevations[i] - elevations[i - 1];
+          if (change > 0) {
+            elevationGain += change;
+          } else {
+            elevationLoss += Math.abs(change);
+          }
+        }
+        
+        const highestPoint = Math.max(...elevations);
+        const lowestPoint = Math.min(...elevations);
+        const netElevationChange = elevationGain - elevationLoss;
+        
+        console.log('📊 REAL elevation stats calculated:', {
+          elevationGain: elevationGain.toFixed(2),
+          elevationLoss: elevationLoss.toFixed(2),
+          netElevationChange: netElevationChange.toFixed(2),
+          highestPoint: highestPoint.toFixed(2),
+          lowestPoint: lowestPoint.toFixed(2)
+        });
+        
+        return {
+          distance: totalDistance,
+          elevationGain: elevationGain,
+          elevationLoss: elevationLoss,
+          netElevationChange: netElevationChange,
+          highestPoint: highestPoint,
+          lowestPoint: lowestPoint
+        };
+      }
+    }
+
+    // Fallback: Try to extract elevation from path coordinates if they have elevation data
+    const pathElevations = pathCoords
+      .map(point => point.elevation)
+      .filter(elev => typeof elev === 'number' && !isNaN(elev));
+    
+    if (pathElevations.length > 1) {
+      let elevationGain = 0;
+      let elevationLoss = 0;
+      
+      for (let i = 1; i < pathElevations.length; i++) {
+        const change = pathElevations[i] - pathElevations[i - 1];
+        if (change > 0) {
+          elevationGain += change;
+        } else {
+          elevationLoss += Math.abs(change);
+        }
+      }
+      
+      const highestPoint = Math.max(...pathElevations);
+      const lowestPoint = Math.min(...pathElevations);
+      const netElevationChange = elevationGain - elevationLoss;
+      
+      console.log('📊 FALLBACK elevation stats from path:', {
+        elevationGain: elevationGain.toFixed(2),
+        elevationLoss: elevationLoss.toFixed(2),
+        netElevationChange: netElevationChange.toFixed(2),
+        highestPoint: highestPoint.toFixed(2),
+        lowestPoint: lowestPoint.toFixed(2)
+      });
+      
+      return {
+        distance: totalDistance,
+        elevationGain: elevationGain,
+        elevationLoss: elevationLoss,
+        netElevationChange: netElevationChange,
+        highestPoint: highestPoint,
+        lowestPoint: lowestPoint
+      };
+    }
+
+    // Last resort: return distance only with zero elevation stats
+    console.log('⚠️ No elevation data available, using distance only');
     return {
       distance: totalDistance,
-      elevationGain: 150, // Mock for now
-      elevationLoss: 100,
-      netElevationChange: 50,
-      highestPoint: 250,
-      lowestPoint: 100
+      elevationGain: 0,
+      elevationLoss: 0,
+      netElevationChange: 0,
+      highestPoint: 0,
+      lowestPoint: 0
     };
   };
 
-  // ROUTE GENERATION - COPIED EXACTLY FROM LOCAL VERSION
+  // ROUTE GENERATION - UPDATED TO USE REAL STATS
   const generateRoute = async () => {
     if (markers.length < 2) {
       onError?.('Please add at least 2 waypoints');
@@ -492,15 +578,15 @@ const GoogleMapsRouteCreator = ({ onRouteCreated, onError, editRouteData = null,
       // Step 7: Set the path data - this will trigger drawing - EXACT LOCAL LOGIC
       setRoutePath(pathCoords);
       
-      // Calculate stats
-      const stats = calculateRouteStatsFromPath(pathCoords);
+      // FIXED: Calculate stats using REAL elevation data
+      const stats = calculateRouteStatsFromPath(pathCoords, elevationData);
       setRouteStats(stats);
 
-      // Return route data
+      // Return route data with REAL stats
       onRouteCreated?.({
         waypoints: markers.map(m => m.position),
         optimizedPath: pathCoords,
-        stats: stats
+        stats: stats // ← Now contains REAL elevation values!
       });
 
     } catch (error) {
@@ -740,7 +826,7 @@ const GoogleMapsRouteCreator = ({ onRouteCreated, onError, editRouteData = null,
               Distance: {(routeStats.distance / 1000).toFixed(2)}km
               {routeStats.elevationGain > 0 && (
                 <span className="ml-2">
-                  ↗ {routeStats.elevationGain.toFixed(0)}m
+                  ↗ {routeStats.elevationGain.toFixed(1)}m
                 </span>
               )}
             </div>
@@ -756,7 +842,7 @@ const GoogleMapsRouteCreator = ({ onRouteCreated, onError, editRouteData = null,
               <span> • </span>
               <span className="text-purple-400">Purple line = New route</span>
               <span> • </span>
-              <span className="text-green-400">Using Local Algorithm</span>
+              <span className="text-green-400">Real Elevation Statistics</span>
             </div>
           ) : (
             <div>
@@ -764,7 +850,7 @@ const GoogleMapsRouteCreator = ({ onRouteCreated, onError, editRouteData = null,
               <span> • </span>
               <span className="text-yellow-400">10km range limit applies</span>
               <span> • </span>
-              <span className="text-green-400">Exact Local Version Logic</span>
+              <span className="text-green-400">Accurate Terrain Data</span>
             </div>
           )}
         </div>
