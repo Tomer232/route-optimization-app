@@ -417,40 +417,40 @@ const GoogleMapsRouteCreator = ({ onRouteCreated, onError, editRouteData = null,
 
   // NEW: Call backend A* algorithm
   const callBackendAstar = async (elevationData) => {
-    try {
-      console.log('🚀 Calling backend A* with', elevationData.length, 'points');
-      
-      // Create CSV format for the working backend
-      const csvContent = createCSVFromElevationData(elevationData);
-      
-      // Create form data with CSV file
-      const formData = new FormData();
-      const csvBlob = new Blob([csvContent], { type: 'text/csv' });
-      formData.append('file', csvBlob, 'elevation_data.csv');
-      
-      // Call your working /api/process_csv endpoint
-      const response = await fetch('/api/process_csv', {
-        method: 'POST',
-        body: formData
-      });
-      
-      if (!response.ok) {
-        const errorText = await response.text();
-        throw new Error(`Backend route optimization failed: ${response.status} - ${errorText}`);
-      }
-      
-      // Parse CSV response back to coordinates
-      const csvResponse = await response.text();
-      const optimizedPath = parseCSVToCoordinates(csvResponse);
-      
-      console.log('✅ Backend A* returned', optimizedPath.length, 'optimized points');
-      return optimizedPath;
-      
-    } catch (error) {
-      console.error('Backend A* call failed:', error);
-      throw error;
+  try {
+    console.log('🚀 Calling backend A* with', elevationData.length, 'points');
+    
+    // Create CSV format for the working backend
+    const csvContent = createCSVFromElevationData(elevationData);
+    
+    // Create form data with CSV file
+    const formData = new FormData();
+    const csvBlob = new Blob([csvContent], { type: 'text/csv' });
+    formData.append('file', csvBlob, 'elevation_data.csv');
+    
+    // FIXED: Call the Python Flask server directly (change the URL)
+    const response = await fetch('http://localhost:5000/process_csv', {
+      method: 'POST',
+      body: formData
+    });
+    
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new Error(`Backend route optimization failed: ${response.status} - ${errorText}`);
     }
-  };
+    
+    // Parse CSV response back to coordinates
+    const csvResponse = await response.text();
+    const optimizedPath = parseCSVToCoordinates(csvResponse);
+    
+    console.log('✅ Backend A* returned', optimizedPath.length, 'optimized points');
+    return optimizedPath;
+    
+  } catch (error) {
+    console.error('Backend A* call failed:', error);
+    throw error;
+  }
+};
 
   // NEW: Create CSV from elevation data
   const createCSVFromElevationData = (elevationData) => {
