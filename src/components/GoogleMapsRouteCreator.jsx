@@ -285,8 +285,6 @@ const GoogleMapsRouteCreator = ({ onRouteCreated, onError, editRouteData = null,
     setRoutePath([]);
     setRouteStats(null);
     setRangeWarning(null);
-    // FIXED: DON'T exit edit mode when removing markers - stay in edit mode
-    // setIsEditMode(false); // REMOVED - keep edit mode active
   }, [markers]);
 
   const onMarkerDragEnd = useCallback((markerId, event) => {
@@ -321,6 +319,7 @@ const GoogleMapsRouteCreator = ({ onRouteCreated, onError, editRouteData = null,
     setRangeWarning(null);
   }, [markers, allowedAreaCenter, isScriptLoaded, isMapLoaded]);
 
+  // UPDATED: Use backend A* instead of frontend generation
   const generateRoute = async () => {
     if (markers.length < 2) {
       alert('Add at least 2 points to create a route');
@@ -335,24 +334,151 @@ const GoogleMapsRouteCreator = ({ onRouteCreated, onError, editRouteData = null,
       
       await new Promise(resolve => setTimeout(resolve, 50));
       
-      const detailedPath = await createDetailedPath(markers.map(m => m.position));
-      setRoutePath(detailedPath);
-      const elevationData = await getElevationData(detailedPath);
-      const stats = calculateRouteStats(detailedPath, elevationData);
+      console.log('🔄 Using backend A* for route optimization...');
+      
+      // Create elevation data for backend processing
+      const elevationData = await createElevationDataForBackend(markers.map(m => m.position));
+      
+      // Call the working A* backend
+      const optimizedPath = await callBackendAstar(elevationData);
+      
+      setRoutePath(optimizedPath);
+      const stats = calculateRouteStats(optimizedPath, elevationData);
       setRouteStats(stats);
+      
       onRouteCreated?.({
         waypoints: markers.map(m => m.position),
-        optimizedPath: elevationData.length > 0 ? elevationData : detailedPath,
+        optimizedPath: optimizedPath,
         stats
       });
+      
     } catch (error) {
       console.error('Route generation failed:', error);
-      onError?.('Failed to generate route');
+      onError?.('Failed to generate route: ' + error.message);
       setRoutePath([]);
       setRouteStats(null);
     } finally {
       setIsProcessing(false);
     }
+  };
+
+  // NEW: Create elevation data for backend processing
+  const createElevationDataForBackend = async (waypoints) => {
+    try {
+      console.log('📈 Getting elevation data for waypoints...');
+      
+      // Create detailed path with intermediate points
+      const detailedPath = await createDetailedPath(waypoints);
+      
+      // Get elevation data for all points
+      const elevationData = await getElevationData(detailedPath);
+      
+      // Add point types for A* algorithm
+      const processedData = elevationData.map((point, index) => {
+        let pointType = 'grid'; // Default type
+        
+        // Mark waypoints with proper types
+        const isWaypoint = waypoints.some(wp => 
+          Math.abs(wp.lat - point.lat) < 0.0001 && 
+          Math.abs(wp.lng - point.lng) < 0.0001
+        );
+        
+        if (isWaypoint) {
+          const waypointIndex = waypoints.findIndex(wp => 
+            Math.abs(wp.lat - point.lat) < 0.0001 && 
+            Math.abs(wp.lng - point.lng) < 0.0001
+          );
+          
+          if (waypointIndex === 0) {
+            pointType = 'start';
+          } else if (waypointIndex === waypoints.length - 1) {
+            pointType = 'end';
+          } else {
+            pointType = `w${waypointIndex}`;
+          }
+        }
+        
+        return {
+          lat: point.lat,
+          lng: point.lng,
+          elevation: point.elevation || 0,
+          point_type: pointType
+        };
+      });
+      
+      console.log('✅ Created elevation data with', processedData.length, 'points');
+      return processedData;
+      
+    } catch (error) {
+      console.error('Error creating elevation data:', error);
+      throw error;
+    }
+  };
+
+  // NEW: Call backend A* algorithm
+  const callBackendAstar = async (elevationData) => {
+    try {
+      console.log('🚀 Calling backend A* with', elevationData.length, 'points');
+      
+      // Create CSV format for the working backend
+      const csvContent = createCSVFromElevationData(elevationData);
+      
+      // Create form data with CSV file
+      const formData = new FormData();
+      const csvBlob = new Blob([csvContent], { type: 'text/csv' });
+      formData.append('file', csvBlob, 'elevation_data.csv');
+      
+      // Call your working /api/process_csv endpoint
+      const response = await fetch('/api/process_csv', {
+        method: 'POST',
+        body: formData
+      });
+      
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(`Backend route optimization failed: ${response.status} - ${errorText}`);
+      }
+      
+      // Parse CSV response back to coordinates
+      const csvResponse = await response.text();
+      const optimizedPath = parseCSVToCoordinates(csvResponse);
+      
+      console.log('✅ Backend A* returned', optimizedPath.length, 'optimized points');
+      return optimizedPath;
+      
+    } catch (error) {
+      console.error('Backend A* call failed:', error);
+      throw error;
+    }
+  };
+
+  // NEW: Create CSV from elevation data
+  const createCSVFromElevationData = (elevationData) => {
+    const header = 'lat,lng,elevation,point_type\n';
+    const rows = elevationData.map(point => 
+      `${point.lat},${point.lng},${point.elevation},${point.point_type}`
+    ).join('\n');
+    
+    return header + rows;
+  };
+
+  // NEW: Parse CSV response to coordinates
+  const parseCSVToCoordinates = (csvText) => {
+    const lines = csvText.trim().split('\n');
+    const coordinates = [];
+    
+    // Skip header line
+    for (let i = 1; i < lines.length; i++) {
+      const parts = lines[i].split(',');
+      if (parts.length >= 2) {
+        coordinates.push({
+          lat: parseFloat(parts[0]),
+          lng: parseFloat(parts[1])
+        });
+      }
+    }
+    
+    return coordinates;
   };
 
   const resetMap = () => {
@@ -365,8 +491,6 @@ const GoogleMapsRouteCreator = ({ onRouteCreated, onError, editRouteData = null,
     setRouteStats(null);
     setAllowedAreaCenter(null);
     setRangeWarning(null);
-    // FIXED: DON'T exit edit mode when resetting - stay in edit mode if we were editing
-    // setIsEditMode(false); // REMOVED - preserve edit mode state
     
     // FORCE POLYLINE RE-RENDER: Change key to force complete re-render
     setPolylineKey(prev => prev + 1);
@@ -664,7 +788,7 @@ const GoogleMapsRouteCreator = ({ onRouteCreated, onError, editRouteData = null,
               disabled={markers.length < 2 || isProcessing || !isMapLoaded}
               className="px-4 py-2 bg-orp-blue text-white rounded border border-white transition-transform hover:scale-105 disabled:opacity-50"
             >
-              {isProcessing ? '⏳ Processing...' : '🗺️ Generate Route'}
+              {isProcessing ? '⏳ Processing...' : '🗺️ Generate Route (A*)'}
             </button>
             
             <button
@@ -675,7 +799,7 @@ const GoogleMapsRouteCreator = ({ onRouteCreated, onError, editRouteData = null,
               🔄 Reset
             </button>
 
-            {/* MOVED: Refresh Map button from top-right to here */}
+            {/* Refresh Map button */}
             {setMapKey && (
               <button
                 onClick={() => setMapKey(prev => prev + 1)}
@@ -708,12 +832,16 @@ const GoogleMapsRouteCreator = ({ onRouteCreated, onError, editRouteData = null,
               <span className="text-red-400">Red = Original route</span>
               <span> • </span>
               <span className="text-purple-400">Purple line = New route</span>
+              <span> • </span>
+              <span className="text-green-400">Using Backend A* Optimization</span>
             </div>
           ) : (
             <div>
               <span>Click to add points • Right-click to delete • Drag to move</span>
               <span> • </span>
               <span className="text-yellow-400">10km range limit applies</span>
+              <span> • </span>
+              <span className="text-green-400">Powered by Backend A* Algorithm</span>
             </div>
           )}
         </div>
