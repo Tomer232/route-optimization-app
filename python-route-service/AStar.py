@@ -1,4 +1,4 @@
-# AStar.py - ORIGINAL WORKING VERSION (Fixed Mesh Bug, Good Performance)
+# AStar.py - (Fixed Mesh Bug, Good Performance)
 
 import pandas as pd
 import math
