@@ -602,10 +602,11 @@ const GoogleMapsRouteCreator = ({ onRouteCreated, onError, editRouteData = null,
 
       console.log('📤 Sending CSV to backend...');
 
-      const response = await fetch('https://route-optimization-app-production.up.railway.app:5000/process_csv', {
-        method: 'POST',
-        body: formData
-      });
+      // Replace with your new Python service URL
+const response = await fetch('https://your-python-service.railway.app/process_csv', {
+  method: 'POST',
+  body: formData
+});
 
       if (!response.ok) {
         throw new Error(`HTTP error! status: ${response.status}`);
