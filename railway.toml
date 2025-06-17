@@ -5,5 +5,5 @@ builder = "NIXPACKS"
 NODE_VERSION = "18"
 
 [deploy]
-# Run both Node.js (port 8080) and Python (port 5000) servers
-startCommand = "cd backend && node server.js & cd python-route-service && python server.py & wait"
+# Back to Node.js only
+startCommand = "cd backend && node server.js"
