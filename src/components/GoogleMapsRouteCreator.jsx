@@ -2,7 +2,6 @@ import React, { useState, useCallback, useRef, useEffect } from 'react';
 import { GoogleMap, Marker, Polyline } from '@react-google-maps/api';
 import MarkerLimitPopup from './MarkerLimitPopup';
 
-// BULLETPROOF APPROACH: Use global script loading instead of LoadScript
 const loadGoogleMapsScript = (apiKey) => {
   return new Promise((resolve, reject) => {
     // Check if already loaded
@@ -371,6 +370,46 @@ const GoogleMapsRouteCreator = ({ onRouteCreated, onError, editRouteData = null,
     return elevationData;
   };
 
+  // NEW: Function to get elevation data specifically for the route path
+  const getElevationDataForRoute = async (pathCoords) => {
+    try {
+      const elevationService = new window.google.maps.ElevationService();
+      const batchSize = 512;
+      const elevationData = [];
+
+      for (let start = 0; start < pathCoords.length; start += batchSize) {
+        const batch = pathCoords.slice(start, start + batchSize);
+        
+        const results = await new Promise((resolve, reject) => {
+          elevationService.getElevationForLocations(
+            { locations: batch },
+            (results, status) => {
+              if (status === 'OK') {
+                resolve(results);
+              } else {
+                reject(new Error(`Elevation API error: ${status}`));
+              }
+            }
+          );
+        });
+
+        results.forEach((result) => {
+          elevationData.push({
+            lat: result.location.lat(),
+            lng: result.location.lng(),
+            elevation: result.elevation
+          });
+        });
+      }
+
+      return elevationData;
+    } catch (error) {
+      console.error('Error getting route elevation data:', error);
+      // Return path with default elevation
+      return pathCoords.map(point => ({ ...point, elevation: 100 }));
+    }
+  };
+
   // FIXED: Calculate REAL route statistics instead of mock values
   const calculateRouteStatsFromPath = (pathCoords, elevationData = null) => {
     if (!pathCoords || pathCoords.length < 2) {
@@ -485,7 +524,7 @@ const GoogleMapsRouteCreator = ({ onRouteCreated, onError, editRouteData = null,
     };
   };
 
-  // ROUTE GENERATION - UPDATED TO USE REAL STATS
+  // ROUTE GENERATION - UPDATED TO USE REAL STATS FROM ACTUAL ROUTE
   const generateRoute = async () => {
     if (markers.length < 2) {
       onError?.('Please add at least 2 waypoints');
@@ -540,6 +579,16 @@ const GoogleMapsRouteCreator = ({ onRouteCreated, onError, editRouteData = null,
       const elevationData = await getElevationDataBatch(elevationPoints);
       console.log(`Got elevation data for ${elevationData.length} points`);
 
+      // DEBUG: Check elevation data
+      console.log('🔍 ELEVATION DATA DEBUG:', {
+        totalPoints: elevationData.length,
+        sampleElevations: elevationData.slice(0, 5).map(p => p.elevation),
+        elevationRange: {
+          min: Math.min(...elevationData.map(p => p.elevation)),
+          max: Math.max(...elevationData.map(p => p.elevation))
+        }
+      });
+
       // Step 4: Create CSV format - EXACT LOCAL LOGIC
       const csvContent = "lat,lng,elevation,point_type\n" + 
         elevationData.map(point => 
@@ -575,12 +624,28 @@ const GoogleMapsRouteCreator = ({ onRouteCreated, onError, editRouteData = null,
 
       console.log(`✅ Server provided ${pathCoords.length} points for route`);
 
-      // Step 7: Set the path data - this will trigger drawing - EXACT LOCAL LOGIC
+      // Step 7: Get elevation data for the EXACT route path coordinates
+      console.log('📈 Getting elevation data for optimized route path...');
+      const routeElevationData = await getElevationDataForRoute(pathCoords);
+      
+      console.log('🔍 ROUTE ELEVATION DEBUG:', {
+        pathPoints: pathCoords.length,
+        elevationPoints: routeElevationData.length,
+        sampleElevations: routeElevationData.slice(0, 5).map(p => p.elevation),
+        elevationRange: {
+          min: Math.min(...routeElevationData.map(p => p.elevation)),
+          max: Math.max(...routeElevationData.map(p => p.elevation))
+        }
+      });
+
+      // Step 8: Set the path data - this will trigger drawing
       setRoutePath(pathCoords);
       
-      // FIXED: Calculate stats using REAL elevation data
-      const stats = calculateRouteStatsFromPath(pathCoords, elevationData);
+      // FIXED: Calculate stats using REAL elevation data from the optimized route
+      const stats = calculateRouteStatsFromPath(pathCoords, routeElevationData);
       setRouteStats(stats);
+
+      console.log('📊 FINAL STATS:', stats);
 
       // Return route data with REAL stats
       onRouteCreated?.({
