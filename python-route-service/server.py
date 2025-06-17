@@ -1,26 +1,14 @@
-from flask import Flask, request, jsonify, send_from_directory, send_file
+# server.py - COMPLETE FIXED VERSION
+
+from flask import Flask, request, jsonify, make_response
 from flask_cors import CORS
 import pandas as pd
 import io
 from AStar import run_astar
 import traceback
-import os
 
-app = Flask(__name__, static_folder='static', static_url_path='')
+app = Flask(__name__)
 CORS(app)  # Allow all cross-origin requests
-
-# Serve React frontend
-@app.route('/')
-def serve_frontend():
-    return send_from_directory(app.static_folder, 'index.html')
-
-@app.route('/<path:path>')
-def serve_static_files(path):
-    if path and os.path.exists(os.path.join(app.static_folder, path)):
-        return send_from_directory(app.static_folder, path)
-    else:
-        # For React Router - serve index.html for all unmatched routes
-        return send_from_directory(app.static_folder, 'index.html')
 
 @app.route('/health', methods=['GET'])
 def health_check():
@@ -28,14 +16,19 @@ def health_check():
     return jsonify({
         "status": "healthy",
         "service": "ORP Route Optimization Service",
-        "version": "1.0.0"
+        "version": "2.1.0-FIXED",
+        "features": [
+            "Sequential A* pathfinding (FIXED MESH BUG)",
+            "Elevation-aware routing", 
+            "CSV processing",
+            "Multi-waypoint sequential routing"
+        ]
     })
 
-@app.route('/api/process_csv', methods=['POST'])
+@app.route('/process_csv', methods=['POST'])
 def process_csv():
-    """Process CSV with elevation data and return optimized route"""
+    """FIXED: Process CSV with elevation data and return sequential route as CSV"""
     try:
-        # Check if file is present
         if 'file' not in request.files:
             return jsonify({
                 "success": False,
@@ -49,10 +42,11 @@ def process_csv():
                 "error": "No file selected"
             }), 400
         
-        # Read CSV data
-        df = pd.read_csv(file)
+        print(f"📄 Processing uploaded CSV: {file.filename}")
         
-        # Validate required columns
+        df = pd.read_csv(file)
+        print(f"📊 CSV contains {len(df)} rows")
+        
         required_columns = ['lat', 'lng', 'elevation', 'point_type']
         missing_columns = [col for col in required_columns if col not in df.columns]
         if missing_columns:
@@ -61,20 +55,42 @@ def process_csv():
                 "error": f"Missing required columns: {missing_columns}"
             }), 400
         
-        # Run A* algorithm
+        print(f"📊 Processing {len(df)} elevation points...")
+        
+        # Count waypoints to determine routing strategy
+        waypoint_types = df['point_type'].unique()
+        waypoint_count = len([t for t in waypoint_types if t in ['start', 'end'] or t.startswith('w')])
+        
+        print(f"🎯 Detected {waypoint_count} waypoints: {sorted(waypoint_types)}")
+        
+        if waypoint_count == 2:
+            print("📍 2-waypoint route: Using simple A* (works perfectly)")
+        else:
+            print(f"📍 {waypoint_count}-waypoint route: Using FIXED SEQUENTIAL A* (no more mesh!)")
+        
+        # Run the FIXED A* algorithm (auto-detects 2-point vs multi-point)
+        print("🔄 Running FIXED A* algorithm...")
         result = run_astar(df)
         
-        return jsonify({
-            "success": True,
-            "data": {
-                "path": result['path'],
-                "stats": result['stats'],
-                "pathLength": len(result['path'])
-            }
-        })
+        print(f"✅ Generated SEQUENTIAL route with {result['pathLength']} points")
+        
+        # Return as CSV format (same as working 2-point version)
+        path_coordinates = result['path']
+        
+        # Create CSV response
+        csv_lines = ['lat,lng']  # Header
+        for coord in path_coordinates:
+            csv_lines.append(f"{coord['lat']:.10f},{coord['lng']:.10f}")
+        
+        csv_content = '\n'.join(csv_lines)
+        
+        print(f"✅ Returning CSV with {len(path_coordinates)} sequential path points")
+        
+        # Return as plain text CSV (same format as working version)
+        return csv_content, 200, {'Content-Type': 'text/plain'}
         
     except ValueError as e:
-        # Handle algorithm-specific errors (like no path found)
+        print(f"❌ Algorithm error: {str(e)}")
         return jsonify({
             "success": False,
             "error": str(e),
@@ -82,8 +98,7 @@ def process_csv():
         }), 422
         
     except Exception as e:
-        # Handle unexpected errors
-        print(f"Error processing route: {str(e)}")
+        print(f"❌ Error processing route: {str(e)}")
         print(traceback.format_exc())
         return jsonify({
             "success": False,
@@ -91,7 +106,7 @@ def process_csv():
             "type": "server_error"
         }), 500
 
-@app.route('/api/process_route', methods=['POST'])
+@app.route('/process_route', methods=['POST'])
 def process_route():
     """Alternative endpoint that accepts JSON data instead of CSV file"""
     try:
@@ -102,6 +117,8 @@ def process_route():
                 "success": False,
                 "error": "No elevation data provided"
             }), 400
+        
+        print("🔄 Processing JSON elevation data...")
         
         # Convert JSON to DataFrame
         df = pd.DataFrame(data['elevationData'])
@@ -115,19 +132,20 @@ def process_route():
                 "error": f"Missing required columns: {missing_columns}"
             }), 400
         
+        print(f"📊 Processing {len(df)} elevation points...")
+        
         # Run A* algorithm
         result = run_astar(df)
         
+        print(f"✅ Generated route with {result['pathLength']} points")
+        
         return jsonify({
             "success": True,
-            "data": {
-                "path": result['path'],
-                "stats": result['stats'],
-                "pathLength": len(result['path'])
-            }
+            "data": result
         })
         
     except ValueError as e:
+        print(f"❌ Algorithm error: {str(e)}")
         return jsonify({
             "success": False,
             "error": str(e),
@@ -135,7 +153,7 @@ def process_route():
         }), 422
         
     except Exception as e:
-        print(f"Error processing route: {str(e)}")
+        print(f"❌ Error processing route: {str(e)}")
         print(traceback.format_exc())
         return jsonify({
             "success": False,
@@ -143,15 +161,79 @@ def process_route():
             "type": "server_error"
         }), 500
 
+@app.route('/optimize_route', methods=['POST'])
+def optimize_route():
+    """Simplified endpoint for quick route optimization with waypoints"""
+    try:
+        data = request.get_json()
+        waypoints = data.get('waypoints', [])
+        
+        if len(waypoints) < 2:
+            return jsonify({
+                "success": False,
+                "error": "At least 2 waypoints required"
+            }), 400
+        
+        print(f"🔄 Quick optimization for {len(waypoints)} waypoints")
+        
+        # Create a simple elevation dataset without dense grid
+        elevation_data = []
+        for i, wp in enumerate(waypoints):
+            point_type = 'start' if i == 0 else 'end' if i == len(waypoints) - 1 else f'w{i}'
+            elevation_data.append({
+                'lat': wp['lat'],
+                'lng': wp['lng'],
+                'elevation': wp.get('elevation', 100.0),  # Use provided elevation or default
+                'point_type': point_type
+            })
+        
+        df = pd.DataFrame(elevation_data)
+        result = run_astar(df)
+        
+        return jsonify({
+            "success": True,
+            "data": result,
+            "message": "Route optimized with FIXED sequential pathfinding"
+        })
+        
+    except Exception as e:
+        print(f"❌ Error in optimize_route: {str(e)}")
+        print(traceback.format_exc())
+        return jsonify({
+            "success": False,
+            "error": str(e),
+            "type": "optimization_error"
+        }), 500
+
 if __name__ == '__main__':
+    print("🚀 Starting ORP Route Optimization Service v2.1-FIXED")
+    print("🔧 MESH BUG FIXED: Sequential waypoint routing implemented")
+    print("📡 Server will be available at http://localhost:5000")
+    print("🗺️  Endpoints:")
+    print("   - GET  /health - Service health check")
+    print("   - POST /process_csv - Process uploaded CSV with elevation data (RETURNS CSV)")
+    print("   - POST /process_route - Process JSON elevation data (RETURNS JSON)")
+    print("   - POST /optimize_route - Quick route optimization")
+    print("🔧 Configuration:")
+    print("   - ✅ 2-waypoint routes: Use existing A* (already works)")
+    print("   - ✅ 3+ waypoint routes: Use FIXED sequential A* (no more mesh!)")
+    
+    # Try different ports if 5000 is occupied
     import os
-    print("🚀 Starting ORP Route Optimization Service...")
-    print("📍 Health check: /health")
-    print("🗺️  Route processing: /api/process_csv")
-    print("🌐 Frontend: /")
+    ports_to_try = [5000, 5001, 5002, 8000, 8080]
     
-    # Get port from environment (Railway provides this)
-    port = int(os.environ.get('PORT', 5000))
-    debug_mode = os.environ.get('FLASK_ENV') == 'development'
-    
-    app.run(debug=debug_mode, host='0.0.0.0', port=port)
+    for port in ports_to_try:
+        try:
+            print(f"📡 Trying to start server on http://localhost:{port}")
+            app.run(debug=True, host='0.0.0.0', port=port)
+            break  # If successful, break out of loop
+            
+        except OSError as e:
+            if "Address already in use" in str(e):
+                print(f"❌ Port {port} is already in use, trying next port...")
+                continue
+            else:
+                raise e
+    else:
+        print("❌ Could not start server on any available port!")
+        print("💡 Try manually stopping other services or restarting your computer")
