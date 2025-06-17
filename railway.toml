@@ -5,5 +5,5 @@ builder = "NIXPACKS"
 NODE_VERSION = "18"
 
 [deploy]
-# Back to Node.js only
+# Clean Node.js only deployment
 startCommand = "cd backend && node server.js"
