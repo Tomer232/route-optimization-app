@@ -206,34 +206,27 @@ def optimize_route():
         }), 500
 
 if __name__ == '__main__':
-    print("🚀 Starting ORP Route Optimization Service v2.1-FIXED")
+    print("🚀 Starting ORP Route Optimization Service - PRODUCTION")
     print("🔧 MESH BUG FIXED: Sequential waypoint routing implemented")
-    print("📡 Server will be available at http://localhost:5000")
-    print("🗺️  Endpoints:")
+    
+    # Railway will set the PORT environment variable
+    import os
+    port = int(os.environ.get('PORT', 8080))
+    
+    print(f"📡 Server starting on port {port}")
+    print("🗺️  Production Endpoints:")
     print("   - GET  /health - Service health check")
-    print("   - POST /process_csv - Process uploaded CSV with elevation data (RETURNS CSV)")
-    print("   - POST /process_route - Process JSON elevation data (RETURNS JSON)")
+    print("   - POST /process_csv - Process uploaded CSV with elevation data")
+    print("   - POST /process_route - Process JSON elevation data")
     print("   - POST /optimize_route - Quick route optimization")
     print("🔧 Configuration:")
-    print("   - ✅ 2-waypoint routes: Use existing A* (already works)")
-    print("   - ✅ 3+ waypoint routes: Use FIXED sequential A* (no more mesh!)")
+    print("   - ✅ 2-waypoint routes: Simple A*")
+    print("   - ✅ 3+ waypoint routes: Sequential A*")
+    print("   - ✅ Production mode: debug=False")
     
-    # Try different ports if 5000 is occupied
-    import os
-    ports_to_try = [5000, 5001, 5002, 8000, 8080]
-    
-    for port in ports_to_try:
-        try:
-            print(f"📡 Trying to start server on http://localhost:{port}")
-            app.run(debug=True, host='0.0.0.0', port=port)
-            break  # If successful, break out of loop
-            
-        except OSError as e:
-            if "Address already in use" in str(e):
-                print(f"❌ Port {port} is already in use, trying next port...")
-                continue
-            else:
-                raise e
-    else:
-        print("❌ Could not start server on any available port!")
-        print("💡 Try manually stopping other services or restarting your computer")
+    # Production configuration
+    app.run(
+        debug=False,        # Production mode
+        host='0.0.0.0',    # Accept external connections
+        port=port          # Use Railway's assigned port
+    )
