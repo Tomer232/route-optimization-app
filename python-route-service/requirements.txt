@@ -1,9 +1,4 @@
-[build]
-builder = "NIXPACKS"
-
-[build.env]
-NODE_VERSION = "18"
-
-[deploy]
-# Clean Node.js only deployment
-startCommand = "cd backend && node server.js"
+Flask==3.0.0
+Flask-CORS==4.0.0
+pandas==2.1.4
+numpy==1.26.2
