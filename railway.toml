@@ -1,3 +1,4 @@
+# railway-frontend.toml - For React frontend service
 [build]
 builder = "NIXPACKS"
 
@@ -5,5 +6,6 @@ builder = "NIXPACKS"
 NODE_VERSION = "18"
 
 [deploy]
-# Clean Node.js only deployment
-startCommand = "cd backend && node server.js"
+startCommand = "npm run preview"
+
+# Build command will be: npm install && npm run build
