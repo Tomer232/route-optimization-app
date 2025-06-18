@@ -6,6 +6,6 @@ builder = "NIXPACKS"
 NODE_VERSION = "18"
 
 [deploy]
-startCommand = "npm run preview"
+startCommand = "npx serve -s build"
 
 # Build command will be: npm install && npm run build
